@@ -5,76 +5,81 @@ void main() {
 }
 
 // ==========================================
-// 1. Model (단일 책임 원칙 - 데이터 구조)
+// 1. Model (데이터 구조 - 단일 책임 원칙)
 // ==========================================
 class TodoItem {
   final String id;
-  String title; // 수정이 가능해야 하므로 final 제거
+  String title;
   bool isCompleted;
+  bool isLiked;
+  String? imageUrl;
 
   TodoItem({
     required this.id,
     required this.title,
     this.isCompleted = false,
+    this.isLiked = false,
+    this.imageUrl,
   });
 
-  void toggle() {
-    isCompleted = !isCompleted;
-  }
+  void toggleCompleted() => isCompleted = !isCompleted;
+  void toggleLiked() => isLiked = !isLiked;
 }
 
 // ==========================================
-// 2. ViewModel / State (CRUD 상태 관리 로직)
+// 2. ViewModel / State (상태 관리자)
 // ==========================================
 class TodoController extends ChangeNotifier {
   final List<TodoItem> _todos = [
-    TodoItem(id: '1', title: '5주차 강의 복습'),
-    TodoItem(id: '2', title: '상태 흐름도 작성'),
-    TodoItem(id: '3', title: '운영체제 기출문제 3회독'),
+    TodoItem(id: '1', title: '5주차 강의 복습 #플러터 #복습'),
+    TodoItem(id: '2', title: '상태 흐름도 작성 완료 인증샷!', imageUrl: 'https://picsum.photos/400/200?random=1'), 
+    TodoItem(id: '3', title: '운영체제 기출문제 3회독 #운영체제 #시험기간'),
   ];
 
   List<TodoItem> get todos => _todos;
   int get remainingCount => _todos.where((todo) => !todo.isCompleted).length;
 
-  // C: 새 할 일 추가 (SNS 피드처럼 가장 위에 추가)
-  void addTodo(String title) {
+  void addTodo(String title, {String? imageUrl}) {
     if (title.trim().isEmpty) return;
-    final newItem = TodoItem(
-      id: DateTime.now().millisecondsSinceEpoch.toString(), // 고유 ID 생성
+    _todos.insert(0, TodoItem(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
       title: title,
-    );
-    _todos.insert(0, newItem);
+      imageUrl: imageUrl,
+    ));
     notifyListeners();
   }
 
-  // U: 할 일 내용 수정
   void updateTodo(String id, String newTitle) {
-    if (newTitle.trim().isEmpty) return;
-    final index = _todos.indexWhere((todo) => todo.id == id);
+    final index = _todos.indexWhere((t) => t.id == id);
     if (index != -1) {
       _todos[index].title = newTitle;
       notifyListeners();
     }
   }
 
-  // D: 할 일 삭제
   void deleteTodo(String id) {
-    _todos.removeWhere((todo) => todo.id == id);
+    _todos.removeWhere((t) => t.id == id);
     notifyListeners();
   }
 
-  // 완료 상태 토글
-  void toggleTodo(String id) {
-    final index = _todos.indexWhere((todo) => todo.id == id);
+  void toggleTodoCompleted(String id) {
+    final index = _todos.indexWhere((t) => t.id == id);
     if (index != -1) {
-      _todos[index].toggle();
+      _todos[index].toggleCompleted();
+      notifyListeners();
+    }
+  }
+
+  void toggleTodoLiked(String id) {
+    final index = _todos.indexWhere((t) => t.id == id);
+    if (index != -1) {
+      _todos[index].toggleLiked();
       notifyListeners();
     }
   }
 }
-
 // ==========================================
-// 3. View (메인 화면 및 다이얼로그)
+// 3. View & Theme (DRY 원칙 - 테마 및 앱 껍데기)
 // ==========================================
 class CleanTodoApp extends StatelessWidget {
   const CleanTodoApp({super.key});
@@ -84,8 +89,17 @@ class CleanTodoApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        scaffoldBackgroundColor: const Color(0xFFF0F2F5),
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF007A5E)),
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF007A5E),
+          surface: const Color(0xFFF0F2F5),
+        ),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          elevation: 1,
+          titleTextStyle: TextStyle(color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold),
+        ),
       ),
       home: const TodoFeedScreen(),
     );
@@ -105,7 +119,6 @@ class _TodoFeedScreenState extends State<TodoFeedScreen> {
   @override
   void initState() {
     super.initState();
-    // 상태가 변할 때마다 화면을 다시 그리도록 연결
     _controller.addListener(() => setState(() {}));
   }
 
@@ -115,37 +128,62 @@ class _TodoFeedScreenState extends State<TodoFeedScreen> {
     super.dispose();
   }
 
-  // 글쓰기 & 수정 다이얼로그 재사용 함수 (DRY 원칙)
   void _showTodoDialog({String? id, String? currentTitle}) {
     final textController = TextEditingController(text: currentTitle);
     final isEditing = id != null;
+    bool attachMockImage = false; 
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(isEditing ? '할 일 수정' : '새 할 일 작성'),
-        content: TextField(
-          controller: textController,
-          decoration: const InputDecoration(hintText: '무엇을 해야 하나요?'),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('취소', style: TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (isEditing) {
-                _controller.updateTodo(id, textController.text);
-              } else {
-                _controller.addTodo(textController.text);
-              }
-              Navigator.pop(context);
-            },
-            child: Text(isEditing ? '수정완료' : '게시'),
-          ),
-        ],
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: Text(isEditing ? '할 일 수정' : '새 게시물 작성'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: textController,
+                  decoration: const InputDecoration(hintText: '무엇을 할 건가요? (#태그 지원)'),
+                  autofocus: true,
+                  maxLines: 3,
+                ),
+                if (!isEditing) ...[
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Checkbox(
+                        value: attachMockImage,
+                        onChanged: (val) => setDialogState(() => attachMockImage = val ?? false),
+                      ),
+                      const Text('완료 인증용 샘플 사진 첨부'),
+                    ],
+                  )
+                ]
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('취소', style: TextStyle(color: Colors.grey)),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  if (isEditing) {
+                    _controller.updateTodo(id, textController.text);
+                  } else {
+                    final imgUrl = attachMockImage 
+                      ? 'https://picsum.photos/400/200?random=${DateTime.now().millisecondsSinceEpoch}' 
+                      : null;
+                    _controller.addTodo(textController.text, imageUrl: imgUrl);
+                  }
+                  Navigator.pop(context);
+                },
+                child: Text(isEditing ? '수정완료' : '게시'),
+              ),
+            ],
+          );
+        }
       ),
     );
   }
@@ -153,12 +191,8 @@ class _TodoFeedScreenState extends State<TodoFeedScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('나의 할 일', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.white,
-        elevation: 1,
-        surfaceTintColor: Colors.transparent,
-      ),
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      appBar: AppBar(title: const Text('나의 할 일')),
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
@@ -166,12 +200,17 @@ class _TodoFeedScreenState extends State<TodoFeedScreen> {
             padding: const EdgeInsets.only(bottom: 16.0, left: 8.0),
             child: Text(
               '남은 할 일 ${_controller.remainingCount}',
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF007A5E)),
+              style: TextStyle(
+                fontSize: 20, 
+                fontWeight: FontWeight.bold, 
+                color: Theme.of(context).colorScheme.primary,
+              ),
             ),
           ),
           ..._controller.todos.map((todo) => SnsStyleTodoCard(
             todo: todo,
-            onToggle: () => _controller.toggleTodo(todo.id),
+            onToggleComplete: () => _controller.toggleTodoCompleted(todo.id),
+            onToggleLike: () => _controller.toggleTodoLiked(todo.id),
             onEdit: () => _showTodoDialog(id: todo.id, currentTitle: todo.title),
             onDelete: () => _controller.deleteTodo(todo.id),
           )),
@@ -179,26 +218,27 @@ class _TodoFeedScreenState extends State<TodoFeedScreen> {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showTodoDialog(),
-        icon: const Icon(Icons.edit),
-        label: const Text('글쓰기'),
+        icon: const Icon(Icons.add),
+        label: const Text('게시물 작성'),
       ),
     );
   }
 }
-
 // ==========================================
-// 4. 재사용 가능한 UI 컴포넌트 (팝업 메뉴 추가됨)
+// 4. 위젯 세분화 (단일 책임 원칙 - 유지보수성 극대화)
 // ==========================================
 class SnsStyleTodoCard extends StatelessWidget {
   final TodoItem todo;
-  final VoidCallback onToggle;
+  final VoidCallback onToggleComplete;
+  final VoidCallback onToggleLike;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   const SnsStyleTodoCard({
     super.key,
     required this.todo,
-    required this.onToggle,
+    required this.onToggleComplete,
+    required this.onToggleLike,
     required this.onEdit,
     required this.onDelete,
   });
@@ -222,59 +262,212 @@ class SnsStyleTodoCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ListTile(
-            leading: const CircleAvatar(
-              backgroundColor: Color(0xFF007A5E),
-              child: Icon(Icons.person, color: Colors.white),
+          CardHeader(onEdit: onEdit, onDelete: onDelete),
+          CardBody(title: todo.title, isCompleted: todo.isCompleted, imageUrl: todo.imageUrl),
+          const Divider(height: 1),
+          CardFooter(
+            isCompleted: todo.isCompleted,
+            isLiked: todo.isLiked,
+            onToggleComplete: onToggleComplete,
+            onToggleLike: onToggleLike,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// 4-1. Header
+class CardHeader extends StatelessWidget {
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  const CardHeader({super.key, required this.onEdit, required this.onDelete});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: CircleAvatar(
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        child: const Icon(Icons.person, color: Colors.white),
+      ),
+      title: const Text('컴공과 2학년', style: TextStyle(fontWeight: FontWeight.bold)),
+      subtitle: const Text('방금 전 • 기말 D-14'),
+      trailing: PopupMenuButton<String>(
+        icon: const Icon(Icons.more_horiz),
+        onSelected: (value) {
+          if (value == 'edit') onEdit();
+          if (value == 'delete') onDelete();
+        },
+        itemBuilder: (context) => [
+          const PopupMenuItem(value: 'edit', child: Text('수정하기')),
+          const PopupMenuItem(value: 'delete', child: Text('삭제하기', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+  }
+}
+
+// 4-2. Body
+class CardBody extends StatelessWidget {
+  final String title;
+  final bool isCompleted;
+  final String? imageUrl;
+
+  const CardBody({super.key, required this.title, required this.isCompleted, this.imageUrl});
+
+  List<TextSpan> _parseHashtags(String text, BuildContext context) {
+    final words = text.split(' ');
+    return words.map((word) {
+      final isHashtag = word.startsWith('#');
+      return TextSpan(
+        text: '$word ',
+        style: TextStyle(
+          color: isHashtag ? Colors.blue : (isCompleted ? Colors.grey : Colors.black87),
+          fontWeight: isHashtag ? FontWeight.bold : FontWeight.normal,
+          decoration: isCompleted && !isHashtag ? TextDecoration.lineThrough : null,
+        ),
+      );
+    }).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+          child: RichText(
+            text: TextSpan(
+              style: const TextStyle(fontSize: 16),
+              children: _parseHashtags(title, context),
             ),
-            title: const Text('컴공과 2학년', style: TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: const Text('방금 전 • 남은 기한 14일'),
-            // 수정된 부분: PopupMenuButton으로 수정/삭제 옵션 제공
-            trailing: PopupMenuButton<String>(
-              icon: const Icon(Icons.more_horiz), //[cite: 3] 사진의 더보기 아이콘 기능 구현
-              onSelected: (value) {
-                if (value == 'edit') onEdit();
-                if (value == 'delete') onDelete();
-              },
-              itemBuilder: (context) => [
-                const PopupMenuItem(value: 'edit', child: Text('수정하기')),
-                const PopupMenuItem(value: 'delete', child: Text('삭제하기', style: TextStyle(color: Colors.red))),
+          ),
+        ),
+        if (imageUrl != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8.0),
+            child: Image.network(
+              imageUrl!,
+              width: double.infinity,
+              height: 200,
+              fit: BoxFit.cover,
+            ),
+          ),
+      ],
+    );
+  }
+}
+// 4-3. Footer
+class CardFooter extends StatelessWidget {
+  final bool isCompleted;
+  final bool isLiked;
+  final VoidCallback onToggleComplete;
+  final VoidCallback onToggleLike;
+
+  const CardFooter({
+    super.key,
+    required this.isCompleted,
+    required this.isLiked,
+    required this.onToggleComplete,
+    required this.onToggleLike,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+      child: Row(
+        children: [
+          AnimatedHeartButton(isLiked: isLiked, onTap: onToggleLike),
+          const SizedBox(width: 24),
+          InkWell(
+            onTap: onToggleComplete,
+            child: Row(
+              children: [
+                Icon(
+                  isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
+                  color: isCompleted ? Theme.of(context).colorScheme.primary : Colors.grey,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  isCompleted ? '완료 취소' : '할 일 완료',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: isCompleted ? Theme.of(context).colorScheme.primary : Colors.grey.shade700,
+                  ),
+                ),
               ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-            child: Text(
-              todo.title,
-              style: TextStyle(
-                fontSize: 16,
-                decoration: todo.isCompleted ? TextDecoration.lineThrough : null,
-                color: todo.isCompleted ? Colors.grey : Colors.black87,
-              ),
+        ],
+      ),
+    );
+  }
+}
+
+// 4-4. 하트 애니메이션 버튼
+class AnimatedHeartButton extends StatefulWidget {
+  final bool isLiked;
+  final VoidCallback onTap;
+
+  const AnimatedHeartButton({super.key, required this.isLiked, required this.onTap});
+
+  @override
+  State<AnimatedHeartButton> createState() => _AnimatedHeartButtonState();
+}
+
+class _AnimatedHeartButtonState extends State<AnimatedHeartButton> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
+    _scaleAnimation = TweenSequence([
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.3), weight: 50),
+      TweenSequenceItem(tween: Tween(begin: 1.3, end: 1.0), weight: 50),
+    ]).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+  }
+
+  @override
+  void didUpdateWidget(covariant AnimatedHeartButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isLiked != oldWidget.isLiked && widget.isLiked) {
+      _controller.forward(from: 0.0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: widget.onTap,
+      child: Row(
+        children: [
+          ScaleTransition(
+            scale: _scaleAnimation,
+            child: Icon(
+              widget.isLiked ? Icons.favorite : Icons.favorite_border,
+              color: widget.isLiked ? Colors.red : Colors.grey,
             ),
           ),
-          const Divider(height: 1),
-          InkWell(
-            onTap: onToggle,
-            child: Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    todo.isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
-                    color: todo.isCompleted ? const Color(0xFF007A5E) : Colors.grey,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    todo.isCompleted ? '완료 취소' : '완료하기',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: todo.isCompleted ? const Color(0xFF007A5E) : Colors.grey.shade700,
-                    ),
-                  ),
-                ],
-              ),
+          const SizedBox(width: 6),
+          Text(
+            '좋아요',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: widget.isLiked ? Colors.red : Colors.grey.shade700,
             ),
           ),
         ],
